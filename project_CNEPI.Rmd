@@ -1,0 +1,353 @@
+
+## 560 Project
+## Jingyu Zhang
+
+```{r}
+library(forecast)
+library(dplyr)
+library(astsa)
+library(fGarch) 
+library(dynlm)
+library(tseries)
+library(xts)
+library(fpp)
+library(TSA)
+```
+
+### Data Preparation
+
+```{r}
+data = read.csv("CTOT-1980-2020.csv")
+
+data$Time.Period <- gsub("M", "/", data$Time.Period )
+
+data['date'] = '/01'
+data$Time.Period <- paste(data$Time.Period, data$date,  sep="")
+
+data$Time.Period = as.Date(data$Time.Period, "%Y/%m/%d")
+data = data[order(data$Time.Period),]
+data = subset(data, select = -c(date))
+rownames(data)=NULL
+
+par(mfrow=c(3,1))
+ts(data$United.States, frequency = 12, start = c(1980, 1))%>%plot(main = "United States: CNEPI")
+ts(data$United.Kingdom, frequency = 12, start = c(1980, 1))%>%plot(main = "United Kingdom: CNEPI")
+ts(data$Canada, frequency = 12, start = c(1980, 1))%>%plot(main = "Canada: CNEPI")
+```
+
+
+## Canada
+
+### 1. Decompose Analysis
+
+```{r}
+df_can = ts(data$Canada, frequency = 12, start = c(1980, 1))
+plot.ts(df_can)
+plot(decompose(df_can))
+```
+
+Clear trend: decrease at first, then increase, then decrease a little bit.
+By decomposing, there is seasonality. 
+
+
+### 2. Spectral Analysis
+
+```{r}
+sp=spectrum(df_can, log='no', main = "Canada: Periodogram")
+sp$fre[which.max(sp$spec)]
+1/sp$fre[which.max(sp$spec)]
+max(sp$spec) #estimate of spectral density at predominant period 
+
+U = qchisq(.025,2)
+L = qchisq(.975,2)
+
+2*max(sp$spec)/L #lower bound for spectral density
+2*max(sp$spec)/U #upper bound for spectral density
+
+```
+
+The predominant frequency is near 0.025, therefore the period of the cycle is 40.5 month. The spectral density at predominant period is 11.47. The 95% confidence interval is [3.11, 453.16].
+
+### 3. ARIMA and Seasonal ARIMA Model
+
+####  ARIMA 
+
+```{r}
+# make it stationary
+difflog_df_can = diff(log(df_can)) #take the log transformation and first order difference
+plot.ts(difflog_df_can, main = "Canada: Transformed CNEPI")
+```
+
+```{r}
+acf2(difflog_df_can)
+#auto.arima(df_can)
+```
+
+If we ignore the seasonality, based on the ACF and PACF, we should try ARIMA(1,0,1) and ARIMA(1,0,2)
+
+```{r}
+arima101 = sarima(difflog_df_can,1,0,1)
+arima102 = sarima(difflog_df_can,1,0,2)
+arima_table = data.frame(Model = c("ARIMA(1,0,1)", "ARIMA(1,0,2)"), AIC = c(arima101$AIC, arima102$AIC), BIC = c(arima101$BIC, arima102$BIC), AICc = c(arima101$AICc, arima102$AICc))
+arima_table
+```
+
+Comparing these two models, ARIMA(1, 0, 1) is better.
+
+```{r}
+auto.arima(difflog_df_can, seasonal = FALSE)
+```
+
+Then we use auto.arima() function to prove the result, it shows ARIMA(1, 0, 1) is good.
+
+#### Seasonal ARIMA
+
+```{r}
+auto.arima(df_can, seasonal = TRUE)
+```
+
+Therefore, the seasonality component is not very significant. We can directly use ARIMA model instead of SARIMA model.
+
+#### Prediction 
+
+```{r}
+#since ARIMA(1,0,1) is the best model, we use this model to predict the future
+fit_can = Arima(df_can, order=c(1,1,1))
+pred_can=forecast(fit_can, h=48)
+pred_can # The last 2 columns are 95% prediction intervals lower bound and upper bound 
+autoplot(pred_can) #plot with confidence interval 
+```
+
+
+### 4. ARCH/GARCH Model
+
+```{r}
+#use the best model arima(1,0,1)
+acf2(resid(arima101$fit), 20)
+acf2(resid(arima101$fit)^2, 20)
+```
+
+Based on the ACF and PACF of residuals, it is more like the white noise. Based on the ACF and PACF of residuals squared, we should try GARCH(1,1) and GARCH(1,2). 
+
+```{r}
+can.garch11 = garchFit(~arma(1,1)+garch(1,1), difflog_df_can)
+summary(can.garch11)
+can.garch12 = garchFit(~arma(1,1)+garch(1,2), difflog_df_can)
+summary(can.garch12)
+```
+
+Comparing with the AIC, BIC, AICc, we should choose GARCH(1,1).
+
+
+
+
+## United Kingdom
+
+### 1. Decompose Analysis
+
+```{r}
+df_uk = ts(data$United.Kingdom, frequency = 12, start = c(1980, 1))
+plot.ts(df_uk)
+plot(decompose(df_uk))
+```
+
+Overall increasing trend
+By decomposing, there is seasonality. 
+
+
+### 2. Spectral Analysis
+
+```{r}
+sp=spectrum(df_uk, log='no', main = "U.K.: Periodogram")
+sp$fre[which.max(sp$spec)]
+1/sp$fre[which.max(sp$spec)]
+max(sp$spec) #estimate of spectral density at predominant period 
+
+U = qchisq(.025,2)
+L = qchisq(.975,2)
+
+2*max(sp$spec)/L #lower bound for spectral density
+2*max(sp$spec)/U #upper bound for spectral density
+
+```
+
+The predominant frequency is near 0.1, therefore the period of the cycle is 10 month. The spectral density at predominant period is 0.04. The 95% confidence interval is [0.01, 1.55].
+
+### 3. ARIMA and Seasonal ARIMA Model
+
+####  ARIMA 
+
+```{r}
+# make it stationary
+difflog_df_uk = diff(log(df_uk)) #take the log transformation and first order difference
+plot.ts(difflog_df_uk, main = "U.K.: Transformed CNEPI")
+```
+
+```{r}
+acf2(difflog_df_uk)
+```
+
+If we ignore the seasonality, based on the ACF and PACF, we should try ARIMA(1,0,1) and ARIMA(2,0,1)
+
+```{r}
+arima101 = sarima(difflog_df_uk,1,0,1)
+arima201 = sarima(difflog_df_uk,2,0,1)
+arima_table = data.frame(Model = c("ARIMA(1,0,1)", "ARIMA(2,0,1)"), AIC = c(arima101$AIC, arima201$AIC), BIC = c(arima101$BIC, arima201$BIC), AICc = c(arima101$AICc, arima201$AICc))
+arima_table
+```
+
+Comparing these two models, ARIMA(2, 0, 1) is better.
+
+```{r}
+auto.arima(difflog_df_uk, seasonal = FALSE)
+```
+
+Then we use auto.arima() function, it shows ARIMA(1,0,2) is good. 
+
+```{r}
+arima102 = sarima(difflog_df_uk,1,0,2)
+arima_table = data.frame(Model = c("ARIMA(1,0,1)", "ARIMA(2,0,1)",  "ARIMA(1,0,2)"), AIC = c(arima101$AIC, arima201$AIC, arima102$AIC), BIC = c(arima101$BIC, arima201$BIC, arima102$BIC), AICc = c(arima101$AICc, arima201$AICc, arima102$AICc))
+arima_table
+```
+
+It shows ARIMA(2,0,1) is the best model. 
+
+#### Seasonal ARIMA
+
+```{r}
+auto.arima(df_uk, seasonal = TRUE)
+```
+
+Therefore, the seasonality component is not very significant. We can directly use ARIMA model instead of SARIMA model.
+
+#### Prediction 
+
+```{r}
+#since ARIMA(2,1,1) is the best model, we use this model to predict the future
+fit_uk = Arima(df_uk, order=c(2,1,1))
+pred_uk=forecast(fit_uk, h=48)
+pred_uk # The last 2 columns are 95% prediction intervals lower bound and upper bound 
+autoplot(pred_uk) #plot with confidence interval 
+```
+
+
+### 4. ARCH/GARCH Model
+
+```{r}
+#use the best model arima(2,0,1)
+acf2(resid(arima201$fit), 20)
+acf2(resid(arima201$fit)^2, 20)
+```
+
+Based on the ACF and PACF of residuals, it is more like the white noise. Based on the ACF and PACF of residuals squared, we should try GARCH(1,0)
+
+```{r}
+uk.garch10 = garchFit(~arma(2,1)+garch(1,0), difflog_df_uk)
+summary(uk.garch10)
+```
+
+
+## United States
+
+### 1. Decompose Analysis
+
+```{r}
+df_us = ts(data$United.States, frequency = 12, start = c(1980, 1))
+plot.ts(df_us)
+plot(decompose(df_us))
+```
+
+Clear trend: increase at first, then decrease, then increase
+By decomposing, there is seasonality. 
+
+
+### 2. Spectral Analysis
+
+```{r}
+sp=spectrum(df_us, log='no', main = "U.S.: Periodogram")
+sp$fre[which.max(sp$spec)]
+1/sp$fre[which.max(sp$spec)]
+max(sp$spec) #estimate of spectral density at predominant period 
+
+U = qchisq(.025,2)
+L = qchisq(.975,2)
+
+2*max(sp$spec)/L #lower bound for spectral density
+2*max(sp$spec)/U #upper bound for spectral density
+
+```
+
+The predominant frequency is near 0.02, therefore the period of the cycle is 40.5 month. The spectral density at predominant period is 3.37. The 95% confidence interval is [0.91, 132.97].
+
+### 3. ARIMA and Seasonal ARIMA Model
+
+####  ARIMA 
+
+```{r}
+# make it stationary
+difflog_df_us = diff(df_us) #take the log transformation and first order difference
+plot.ts(difflog_df_us, main = "U.S.: Transformed CNEPI")
+```
+
+```{r}
+acf2(difflog_df_us)
+```
+
+If we ignore the seasonality, based on the ACF and PACF, we should try ARIMA(1,0,1) and ARIMA(0,0,1)
+
+```{r}
+arima101 = sarima(difflog_df_us,1,0,1)
+arima001 = sarima(difflog_df_us,0,0,1)
+arima_table = data.frame(Model = c("ARIMA(1,0,1)", "ARIMA(0,0,1)"), AIC = c(arima101$AIC, arima001$AIC), BIC = c(arima101$BIC, arima001$BIC), AICc = c(arima101$AICc, arima001$AICc))
+arima_table
+```
+
+Comparing these two models, ARIMA(0, 0, 1) is better.
+
+```{r}
+auto.arima(difflog_df_us, seasonal = FALSE)
+```
+
+Then we use auto.arima() function, it proves that ARIMA(0,0,1) is better 
+
+
+
+#### Seasonal ARIMA
+
+```{r}
+auto.arima(df_us, seasonal = TRUE)
+```
+
+Therefore, the seasonality component is not very significant. We can directly use ARIMA model instead of SARIMA model.
+
+#### Prediction 
+
+```{r}
+#since ARIMA(2,1,1) is the best model, we use this model to predict the future
+fit_us = Arima(df_us, order=c(0,1,1))
+pred_us = forecast(fit_us, h=48)
+pred_us # The last 2 columns are 95% prediction intervals lower bound and upper bound 
+autoplot(pred_us) #plot with confidence interval 
+```
+
+
+### 4. ARCH/GARCH Model
+
+```{r}
+#use the best model arima(2,0,1)
+acf2(resid(arima001$fit), 20)
+acf2(resid(arima001$fit)^2, 20)
+```
+
+Based on the ACF and PACF of residuals, it is more like the white noise. Based on the ACF and PACF of residuals squared, we should try GARCH(1,0) and GARCH(1,1)
+
+```{r}
+us.garch11 = garchFit(~arma(0,1)+garch(1,1), difflog_df_us)
+summary(us.garch11)
+us.garch10 = garchFit(~arma(0,1)+garch(1,0), difflog_df_us)
+summary(us.garch10)
+```
+
+Based on the AIC and BIC, we should choose GARCH(1,1).
+
+

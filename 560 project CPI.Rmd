@@ -1,0 +1,199 @@
+---
+title: "560 project"
+author: "Xiangyu Hu"
+date: "2020/4/2"
+output: html_document
+---
+```{r}
+library(astsa)
+library(forecast)
+library(fGarch) 
+library(tseries)
+cpi = read.csv('CPI1980.csv')
+```
+
+```{r}
+#The CPI data for Canada
+cpi_ca = cpi[cpi$Country == 'Canada',4]
+cpi_ca = ts(cpi_ca,frequency = 12,start = c(1980,1),end =c(2020,2))
+
+#summary and decompose
+ts.plot(cpi_ca)
+decpi_ca = decompose(cpi_ca)
+plot(decpi_ca)
+# We can see an obvious increasing trend of the data series.
+plot(decpi_ca$seasonal)
+```
+
+```{r}
+#Fit arima model
+#seasonal  arima model
+df1=diff(diff(cpi_ca))
+plot(df1)
+acf2(df1)
+arima1_1 = arima(order =c(0,2,1),cpi_ca)
+arima1_2 = arima(order =c(0,2,2),cpi_ca)
+auto.arima(cpi_ca)
+sarima(cpi_ca,0,2,2,0,0,2,12)
+model1_1 = arima(cpi_ca,order = c(0,2,2),seasonal = list(order=c(0,0,2),period=12))
+summary(model1_1)
+
+arima1_1$aic
+arima1_2$aic
+model1_1$aic
+#Good effect, noraml distribution and like white noise.
+```
+
+
+```{r}
+#Spectral 
+sp1 = spec.pgram(cpi_ca,log='no')
+fre1 = sp1$fre[which.max(sp1$spec)] 
+cyc1 = 1/fre1
+fre1
+cyc1
+#The frequecy is about 0.025, and have a 40.5 months cycle. 
+```
+
+```{r}
+acf2(model1_1$residuals^2,max.lag=60)
+#fit an Garch(3,3) model
+res_arima1 = model1_1$residuals
+model1_2=garch(res_arima1,order=c(3,3),trace=F)
+summary(model1_2)
+#BOX-LJUNG test shows good effect.
+```
+
+```{r}
+#predict
+f1_1=rwf(cpi_ca,drift = TRUE,h=48)
+accuracy(f1_1)
+autoplot(f1_1)
+
+f1_2 = forecast(model1_1,h=48)
+accuracy(f1_2)
+autoplot(f1_2)
+```
+
+
+
+```{r}
+#United states
+cpi_us = cpi[cpi$Country == 'United States',4]
+cpi_us = ts(cpi_us,frequency = 12,start = c(1980,1),end =c(2020,2))
+#summary and decompose
+ts.plot(cpi_us)
+decpi_us = decompose(cpi_us)
+plot(decpi_us)
+# We can see an obvious increasing trend of the data series.
+plot(decpi_us$seasonal)
+#According to the decompose plot, it has an obvious seasonality.
+```
+
+```{r}
+#Fit arima model
+df2=diff(cpi_us)
+plot(df2)
+acf2(df2)
+arima2_1 = arima(order =c(1,1,1),cpi_us)
+arima2_2 = arima(order =c(0,1,2),cpi_us)
+#seasonal  arima model
+auto.arima(cpi_us)
+sarima(cpi_us,2,1,1,0,0,2,12)
+model2_1 = arima(cpi_us,order = c(2,1,1),seasonal = list(order=c(0,0,2),period=12))
+summary(model2_1)
+arima2_1$aic
+arima2_2$aic
+model2_1$aic
+#Good effect, noraml distribution and like white noise.
+```
+```{r}
+#Spectral 
+sp2 = spec.pgram(cpi_us,log='no')
+fre2 = sp2$fre[which.max(sp2$spec)] 
+cyc2 = 1/fre2
+fre2
+cyc2
+#The frequency is 0.074. has a 13.5 month cycle.
+```
+```{r}
+acf2(model2_1$residuals^2,max.lag=60)
+#fit an Garch(3,3) model
+res_arima2 = model2_1$residuals
+model2_2=garch(res_arima2,order=c(3,3),trace=F)
+summary(model2_2)
+#BOX-LJUNG test shows good effect.
+```
+
+```{r}
+#predict
+f2_1=rwf(cpi_us,drift = TRUE,h=48)
+accuracy(f2_1)
+autoplot(f2_1)
+
+f2_2 = forecast(model2_1,h=48)
+accuracy(f2_2)
+autoplot(f2_2)
+
+```
+
+```{r}
+cpi_uk = cpi[cpi$Country == 'United Kingdom',4]
+cpi_uk = ts(cpi_uk,frequency = 12,start = c(1980,1),end =c(2020,2))
+ts.plot(cpi_uk)
+decpi_uk = decompose(cpi_uk)
+plot(decpi_uk)
+# We can see an obvious increasing trend of the data series.
+plot(decpi_uk$seasonal)
+```
+
+
+```{r}
+#Fit arima model
+df3=diff(diff(cpi_uk))
+plot(df3)
+acf2(df3)
+arima3_1 = arima(order =c(1,2,1),cpi_uk)
+arima3_2 = arima(order =c(1,2,2),cpi_uk)
+#seasonal  arima model
+auto.arima(cpi_uk)
+sarima(cpi_uk,1,1,1,1,1,2,12)
+model3_1 = arima(cpi_uk,order = c(1,1,1),seasonal = list(order=c(1,1,2),period=12))
+summary(model3_1)
+arima3_1$aic
+arima3_2$aic
+model3_1$aic
+#Good effect, noraml distribution and like white noise.
+```
+
+```{r}
+#Spectral 
+sp3 = spec.pgram(cpi_uk,log='no')
+fre3 = sp3$fre[which.max(sp3$spec)] 
+cyc3 = 1/fre3
+fre3
+cyc3
+#The frequency is 0.05. has a 20.25 month cycle.
+```
+
+```{r}
+acf2(model3_1$residuals^2,max.lag=60)
+#fit an Garch(0,3) model
+res_arima3 = model3_1$residuals
+model3_2=garch(res_arima3,order=c(4,4),trace=F)
+summary(model3_2)
+
+#BOX-LJUNG test shows good effect.
+```
+
+```{r}
+#predict
+f3_1=rwf(cpi_uk,drift = TRUE,h=48)
+accuracy(f3_1)
+autoplot(f3_1)
+
+f3_2 = forecast(model3_1,h=48)
+accuracy(f3_2)
+autoplot(f3_2)
+
+```

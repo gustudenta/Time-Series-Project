@@ -1,0 +1,471 @@
+---
+title: "Employment, Persons, Number of"
+author: "Ning Hu"
+date: "4/2/2020"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(dplyr)
+library(fGarch) 
+library(dynlm)
+library(tseries)
+library(astsa) 
+library(xts)
+library(fpp)
+library(TSA)
+library(forecast)
+library(dplR)
+library(tseries)
+```
+
+# Research Indicator: Employment, Persons, Number of
+# Indicator Code: LE_PE_NUM
+```{r}
+# read file 
+ifs <- read.csv("IFS_04-02-2020 18-49-44-40.csv",stringsAsFactors =FALSE)
+colnames(ifs)=c("Country_Name", "Country_Code", "Indicator_Name", "Indicator_Code", "Time_Period", "Value", "Status")
+# remove Status column 
+ifs=ifs[, c(1:6)]
+# dataset preview
+head(ifs)
+print(colnames(ifs))
+```
+# United States
+```{r}
+## Select country
+df1_us=subset(ifs, (Indicator_Code=='LE_PE_NUM') & (Country_Name=='United States'))
+```
+
+
+```{r}
+## Reaarange time
+df1_us$Time_Period <- gsub("M", "/", df1_us$Time_Period)
+
+df1_us['date'] = '/01'
+df1_us$Time_Period <- paste(df1_us$Time_Period, df1_us$date,  sep="")
+
+df1_us$Time_Period = as.Date(df1_us$Time_Period, "%Y/%m/%d")
+
+df1_us = df1_us[order(df1_us$Time_Period),]
+df1_us = subset(df1_us, select = -c(date))
+rownames(df1_us)=NULL
+```
+
+```{r}
+df11=ts(df1_us$Value, frequency = 12, start = c(1980, 1))
+plot(df11, main="United States: Employment, Persons, Number of")
+```
+## 1.Decompose Analysis
+```{r}
+# Decompose
+plot(decompose(df11))
+## There is a obvious growing trend with little drop in 2008-2010 period in the data
+## There is seasonality in the data
+```
+
+## 2.Spectral Analysis 
+```{r}
+sp=spectrum(df11, log='no') 
+sp$fre[which.max(sp$spec)] #0.025
+1/sp$fre[which.max(sp$spec)] # 40 month
+max(sp$spec) #estimate of spectral density at predominant period to be 1.344801e+14
+U = qchisq(.025,2)
+L = qchisq(.975,2)
+2*max(sp$spec)/L #lower bound for spectral density
+2*max(sp$spec)/U #upper bound for spectral density
+
+# The 95% confidence interval is [3.645555e+13, 5.311681e+15]
+```
+
+## 3.ARIMA model
+
+```{r}
+df11.diff=diff(df11)#first order difference,d=1
+plot(df11.diff, main=" difflog data")
+acf(df11.diff,lag.max = 100) ## q = 1
+pacf(df11.diff) #p=1,2
+```
+
+
+
+```{r}
+arima111 = Arima(df11,order = c(1,1,1),include.drift = TRUE)
+arima211  =Arima(df11,order = c(2,1,1),include.drift = TRUE)
+AIC(arima111)
+AIC(arima211)
+BIC(arima111)
+BIC(arima211)
+auto.arima(df11,seasonal = F)
+AIC(auto.arima(df11,seasonal = F))
+BIC(auto.arima(df11,seasonal = F))
+```
+
+
+
+
+
+```{r}
+#Seasonal ARIMA
+fit1 <- auto.arima(df11,trace = T) # Best model: ARIMA(3,0,1)(0,1,2)[12] with drift 
+AIC(fit1)
+```
+```{r}
+sarima(df11,3,0,1,0,1,2,12)
+# The model is a good fit according to the disgnose plots.
+```
+
+### Prediction
+```{r}
+pred1=forecast(fit1,h=48)
+pred1 # The last 2 columns are 95% prediction intervals lower bound and upper bound 
+autoplot(pred1) #plot with confidence interval 
+```
+
+## 4.ARCH/GARCH model
+```{r}
+# fit ARIMA model without seasonal term 
+fit2=auto.arima(df11,  seasonal = FALSE, trace = TRUE) # ARIMA(2,1,2)
+```
+
+```{r}
+#take the log transformation and first order difference
+df11.difflog=diff(log(df11))
+plot(df11.difflog, main=" difflog data")
+
+acf(df11.difflog, lag.max = 20) # from pacf plot, we could observe the seasonality
+pacf(df11.difflog, lag.max = 20)# from pacf plot, AR(1) 
+
+acf2(df11^2) # accoring to pacf plot, ARCH(1) model 
+```
+
+
+```{r}
+# fit ARIMA(2,1,2) model, then plot the residuals ACF and PACF
+arima212=arima(df11, order=c(2,1,2))
+residual_arima212=arima212$residuals
+acf2(residual_arima212)
+acf2(residual_arima212^2)
+```
+
+```{r}
+garch_us1=garch(residual_arima212,order=c(3,3),trace=F)
+summary(garch_us1)
+AIC(garch_us1)
+```
+
+```{r}
+garch_us2=garch(residual_arima212,order=c(0,3),trace=F) # (q,p) 
+summary(garch_us2)
+AIC(garch_us2) # the AIC is smaller, so ARCH(3) model is better
+```
+
+
+# United Kingdom
+```{r}
+## Select country
+df1_uk=subset(ifs, (Indicator_Code=='LE_PE_NUM') & (Country_Name=='United Kingdom'))
+```
+
+```{r}
+df1_uk$Time_Period <- gsub("M", "/", df1_uk$Time_Period)
+
+df1_uk['date'] = '/01'
+df1_uk$Time_Period <- paste(df1_uk$Time_Period, df1_uk$date,  sep="")
+
+df1_uk$Time_Period = as.Date(df1_uk$Time_Period, "%Y/%m/%d")
+
+df1_uk = df1_uk[order(df1_uk$Time_Period),]
+df1_uk = subset(df1_uk, select = -c(date))
+rownames(df1_uk)=NULL
+```
+
+```{r}
+df22=ts(df1_uk$Value, frequency = 12, start = c(1992, 4))
+plot(df22, main="United Kingdom: Employment, Persons, Number of")
+```
+
+## 1. decompose Analysis
+```{r}
+plot(decompose(df22))
+## There is a obvious growing trend with little drop in 2008-2010 period in the data
+## There is seasonality in the data
+```
+
+## 2. Spectral Analysis 
+```{r}
+sp=spectrum(df22, log='no') 
+
+# find the cycle with predominant frequecny 
+sp$fre[which.max(sp$spec)] #  0.066
+
+# find the cycle of predominant frequecny 
+1/sp$fre[which.max(sp$spec)] # 15 month
+
+
+max(sp$spec) #estimate of spectral density at predominant period which is close to 899257074378.
+
+U = qchisq(.025,2)
+L = qchisq(.975,2)
+
+2*max(sp$spec)/L #lower bound for spectral density
+2*max(sp$spec)/U #upper bound for spectral density
+
+# The 95% confidence interval is [243775131599, 3.551876e+13]
+```
+
+## 3. ARIMA model 
+
+```{r}
+df22.diff = diff(df22)
+plot(df22.diff)
+acf2(df22.diff)#p = 4,5 , q = 1,2
+```
+
+```{r}
+arima411 = Arima(df22,order = c(4,1,1),include.drift = T)
+arima511 = Arima(df22,order = c(5,1,1),include.drift = T)
+arima412 = Arima(df22,order = c(4,1,2),include.drift = T)
+arima512 = Arima(df22,order = c(5,1,2),include.drift = T)
+AIC(arima411)
+AIC(arima511)
+AIC(arima412)
+AIC(arima512)
+BIC(arima411)
+BIC(arima511)
+BIC(arima412)
+BIC(arima512)
+
+auto.arima(df22,seasonal = F)
+## arima512 has a lower AIC and BIC. 
+```
+
+
+
+
+
+
+```{r}
+fit22 <- auto.arima(df22) #  Best model: ARIMA(2,1,3)(2,1,1)[12] 
+fit22
+```
+
+```{r}
+sarima(df22,2,1,3,2,1,1,12) # not a very good fit
+```
+
+### Prediction
+```{r}
+pred22 = forecast(fit22,h=48)
+pred22
+autoplot(pred22)
+```
+
+## 4. ARCH/GARCH model
+
+```{r}
+# fit ARIMA model without seasonal term 
+fit3=auto.arima(df22,  seasonal = FALSE)
+fit3
+## ARIMA(5,1,1)
+```
+
+```{r}
+df22.diff=diff(df22)
+plot(df22.diff, main=" diff data") 
+
+df22.log=log(df22)
+plot(df22.log, main=" log data")
+
+df22.difflog=diff(log(df22))
+plot(df22.difflog, main=" difflog data")
+
+
+acf2(df22.difflog)
+## From the acf and pacf we found that there is some patterns. Therefore, we should fit a garch model.  AR(1)
+acf2(df22^2)## ARCH(1)
+```
+
+```{r}
+# fit arima(5,1,1)
+arima511 = arima(df22,order=c(5,1,1))
+residual_arima511 = arima511$residuals
+acf2(residual_arima511^2)
+```
+```{r}
+summary(garchFit(~arma(5,1)+garch(1,1), df22.difflog))
+```
+```{r}
+summary(garchFit(~arma(5,1)+garch(1,0), df22.difflog))
+```
+
+```{r}
+garch_uk1=garch(residual_arima511,order=c(1,1),trace=F)
+summary(garch_uk1)
+AIC(garch_uk1) ## AIC is smaller 
+```
+
+```{r}
+garch_uk2=garch(residual_arima511,order=c(0,1),trace=F)
+summary(garch_uk2)
+AIC(garch_uk2)
+```
+
+
+# Canada
+```{r}
+df1_ca=subset(ifs, (Indicator_Code=='LE_PE_NUM') & (Country_Name=='Canada'))
+df1_ca$Time_Period <- gsub("M", "/", df1_ca$Time_Period)
+
+df1_ca['date'] = '/01'
+df1_ca$Time_Period <- paste(df1_ca$Time_Period, df1_ca$date,  sep="")
+
+df1_ca$Time_Period = as.Date(df1_ca$Time_Period, "%Y/%m/%d")
+
+df1_ca = df1_ca[order(df1_ca$Time_Period),]
+df1_ca = subset(df1_ca, select = -c(date))
+rownames(df1_ca)=NULL
+df1_ca=na.omit(df1_ca)
+
+```
+
+
+```{r}
+df33=ts(df1_ca$Value, frequency = 12, start = c(1993, 1))
+plot(df33, main="Canada: Employment, Persons, Number of")
+```
+
+## 1.Decompose Analysis
+
+```{r}
+plot(decompose(df33))
+## There is a increasing trend with little drop in 2018
+## There is a obvious seasonality
+```
+
+# 2.Spectral Analysis
+```{r}
+sp=spectrum(df33, log='no')
+
+# find the cycle with predominant frequecny 
+sp$fre[which.max(sp$spec)] #  0.0375
+
+# find the cycle of predominant frequecny 
+1/sp$fre[which.max(sp$spec)] # 26.7 month
+
+
+max(sp$spec) #estimate of spectral density at predominant period which is close to 503508181908.
+
+U = qchisq(.025,2)
+L = qchisq(.975,2)
+
+2*max(sp$spec)/L #lower bound for spectral density
+2*max(sp$spec)/U #upper bound for spectral density
+
+# The 95% confidence interval is [132631376982, 1.932478e+13]
+```
+
+### 3. ARIMA model
+
+```{r}
+df33.diff = diff(df33)
+plot(df33.diff)
+acf2(df33.diff)#p = 1, q = 4,5
+```
+
+
+
+```{r}
+arima411 = Arima(df33,order=c(4,1,1),include.drift = T)
+arima511 = Arima(df33,order=c(5,1,1),include.drift = T)
+AIC(arima411)
+AIC(arima511)
+BIC(arima411)
+BIC(arima511)
+auto.arima(df33,seasonal = F)
+#arima511 has lower AIC and BIC
+```
+
+
+
+
+```{r}
+## SEASONA ARIMA
+fit33 <- auto.arima(df33, trace = TRUE) #  Best model: ARIMA(0,1,0)(1,1,2)[12]  
+
+```
+
+```{r}
+sarima(df33,0,1,0,1,1,2,12)
+```
+
+### predict
+```{r}
+pred33=forecast(fit33,h=48)
+pred33
+autoplot(pred33)
+```
+## 4. ARCH/GARCH
+
+```{r}
+fit4=auto.arima(df33,  seasonal = FALSE, trace = TRUE) # ARIMA(5,1,1)
+```
+
+
+```{r}
+df33.diff=diff(df33)
+plot(df33.diff, main=" diff data") 
+
+df33.log=log(df33)
+plot(df33.log, main=" log data")
+
+df33.difflog=diff(log(df33))
+plot(df33.difflog, main=" difflog data")
+
+acf(df33.difflog, lag.max = 100) # from pacf plot, we could observe the seasonality
+pacf(df33.difflog, lag.max = 100)# from pacf plot, AR(2) or AR(4)
+
+acf2(df33^2) 
+```
+
+```{r}
+arima511.2=arima(df33, order=c(5,1,1))
+residual_arima511.2 = arima511.2$residuals
+acf2(residual_arima511.2^2)
+```
+
+
+```{r}
+garch_ca1=garch(residual_arima511.2,order=c(4,1),trace=F)
+summary(garch_ca1)
+AIC(garch_ca1) ## AIC is smaller 
+```
+
+
+```{r}
+garch_ca2=garch(residual_arima511.2,order=c(0,1),trace=F) # (q,p) # AIC is smaller 
+summary(garch_ca2)
+AIC(garch_ca2)
+```
+
+
+
+
+```{r}
+
+
+par(mfrow = c(1,3))
+plot(df11,ylab = "Number", main="United States: Employment")
+plot(df22,ylab = "Number", main="United Kingdom: Employment")
+plot(df33,ylab = "Number", main="Canada: Employment")
+```
+
+
+
+
+
+
+
+
+
